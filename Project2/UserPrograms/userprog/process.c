@@ -21,7 +21,7 @@
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static struct list* token_list;
-static size_t num_tokens;
+static size_t argc;
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -70,7 +70,7 @@ process_execute (const char *file_name)
       list_push_front(token_list, token);
       //printf ("'%s'\n", token);       
   }
-  num_tokens = list_size(token_list);
+  argc = list_size(token_list);
   /* END OF OUR CODE */
   
   /* Create a new thread to execute FILE_NAME. */
@@ -488,52 +488,62 @@ setup_stack (void **esp)
           lock_init(lck);
           lock_acquire(lck);    //Acquire lock
           
+          //Move stack pointer (from 1st bullet of 3.2)
           *esp = PHYS_BASE - 12; 
+          size_t t_size;
           
+          /*
           //Push word_align onto stack
           uint8_t word_align = 0;
-          size_t t_size = sizeof(word_align);
+          t_size = sizeof(word_align);
           *esp -= t_size;
           memcpy (*esp, word_align, t_size);
           hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
           *esp -= t_size;   
+          */
           
           // Push zero (the terminating character onto stack
-          char* zero = 0;
-          t_size =  sizeof(zero);
+          char* the_sentinel = 0;
+          t_size =  sizeof(the_sentinel);
           *esp -= t_size;
-          memcpy(*esp, zero, t_size);
+          memcpy(*esp, the_sentinel, t_size);
           hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
           *esp -= t_size;   
-          
+                    
+          //Push all token addresses on the stack
+          char** argv;
           while(!list_empty(token_list)){      
-              char* token = list_pop_front(token_list);
-              //size_t t_size = sizeof(token);
+              char* token = list_pop_front(token_list);           
               t_size = sizeof(&token);
               *esp -= t_size;
               memcpy (*esp, &token, t_size);
               hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
-              *esp -= t_size;              
+              *esp -= t_size;             
+              argv = &esp;
           }                    
-        //*esp = token_list->pop_front();
-        //*(3.2 - from proj2 description)temporary fix */
-        //*esp = PHYS_BASE - 12; 
-        //*esp = PHYS_BASE;
         
         //Push address of token list
-        t_size = sizeof(&token_list);
+        t_size = sizeof(argv);
         *esp -= t_size;
-        memcpy (*esp, &token_list, t_size);
+        memcpy (*esp, argv, t_size);
         hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
         *esp -= t_size;  
         
         //Push the number of arguments
-        t_size = sizeof(num_tokens);
+        t_size = sizeof(argc);
         *esp -= t_size;
-        memcpy (*esp, num_tokens, t_size);
+        memcpy (*esp, argc, t_size);
         hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
         *esp -= t_size;  
-              
+        
+        //Push fake return address
+        void* fake_address = 0;
+        t_size = sizeof(fake_address);
+        memcpy (*esp, fake_address, t_size);
+        hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
+        *esp -= t_size;  
+                
+        //Move esp to PHYS_BASE - 12
         *esp = PHYS_BASE - 12; 
         lock_release(lck);      //Release lock
         /*OUR CODE ENDS HERE*/
