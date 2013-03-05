@@ -382,12 +382,10 @@
             </df>
             <df name="user">
             </df>
-            <in>arithmetic.d</in>
             <in>debug.d</in>
             <in>random.d</in>
             <in>stdio.d</in>
             <in>stdlib.d</in>
-            <in>string.d</in>
           </df>
           <df name="tests">
             <df name="filesys">

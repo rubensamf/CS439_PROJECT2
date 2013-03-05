@@ -468,16 +468,19 @@ setup_stack (void **esp)
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success){
           
-          /*OUR CODE STARTS HERE*/
+          /* OUR CODE STARTS HERE */
+          /* Push token addresses on the stack by decrementing the stack pointer
+           * and doing memcpy() on the stack pointer and token address
+           * Decrement stack pointer again to make space for the next address */
           *esp = PHYS_BASE - 12; 
-          /*Push tokens on the stack by decrementing the stack pointer and 
-           *setting the value of the stack pointer to the address of the token*/
           while(!list_empty(token_list)){      
               char* token = list_pop_front(token_list);
-              size_t t_size = sizeof(token);
+              //size_t t_size = sizeof(token);
+              size_t t_size = sizeof(&token);
               *esp -= t_size;
-              memcpy (*esp, token, t_size);
-              hex_dump ((uintptr_t) token, token, t_size, true);
+              memcpy (*esp, &token, t_size);
+              *esp -= t_size;
+              hex_dump ((uintptr_t) &token, &token, t_size, true);
           }
           
           
