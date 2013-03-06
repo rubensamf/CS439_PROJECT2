@@ -257,6 +257,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
+  else
+  {
+      printf ("loading: %s\n", file_name);
+  }
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -495,10 +499,12 @@ setup_stack (void **esp)
 /*  (i)   Tokenize my_file_name                                                 *
  *        Push all token addresses on the stack                                 */
           char** argv;
+          int argc;
           char *token, *save_ptr;
           struct list the_token_addresses;
-          list_init(the_token_addresses);
-          struct list_elem *e;
+          list_init(&the_token_addresses);
+          printf ("my_file_name: %s\n", my_file_name);
+
 /*        Tokenizer Loop                                                        */
           for (token = strtok_r (my_file_name, " ", &save_ptr); token != NULL;
                token = strtok_r (NULL, " ", &save_ptr))
