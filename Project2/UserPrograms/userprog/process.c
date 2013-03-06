@@ -68,7 +68,7 @@ process_execute (const char *file_name)
        token = strtok_r (NULL, " ", &save_ptr))
   {   //Push token onto token list
       token += '\0';
-      list_push_front(&token_list, (list_elem *) token);     
+      list_push_front(&token_list, token);     
   }
   argc = list_size(&token_list);
   /* END OF OUR CODE */
