@@ -20,7 +20,8 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-static struct list token_list;
+//static struct list token_list;
+static char *my_file_name;
 static size_t argc;
 
 /* Starts a new thread running a user program loaded from
@@ -30,57 +31,20 @@ static size_t argc;
 tid_t
 process_execute (const char *file_name) 
 {  
-  char *fn_copy;
+  //char *my_file_name;
   tid_t tid;
   
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
-  fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
+  my_file_name = palloc_get_page (0);
+  if (my_file_name == NULL)
     return TID_ERROR;
-  strlcpy (fn_copy, file_name, PGSIZE);
-  
-  /* OUR CODE HERE: */
-  /* MAY NEED TO ACQUIRE LOCK AT TOP TO INSURE MUTUAL EXCLUSION!
-   * Tokenize fn_copy to begin processing
-   * @token: Individual tokens produced by strtok_r()
-   * @save_ptr: The rest of the file_name to be tokenized
-   * @MAX_LEN: The maximum number of characters in fn_copy
-   * @tokens: file_name's tokens
-   */
-  
-  /*
-  size_t MAX_SIZE = 128;
-  size_t size = strlen(fn_copy, MAX_SIZE);
-  size *= sizeof(char*);
-  */
-   /*
-  struct lock *lck;
-  lock_init(lck);
-  lock_acquire(lck);    // Acquire lock
-  */
-  char *token, *save_ptr; 
-  //token_list = PHYS_BASE - 12;
-  list_init(&token_list);
-  
-  /* Place tokens into the list of tokens, First In Last Out */
-  for (token = strtok_r (fn_copy, " ", &save_ptr); token != NULL;
-       token = strtok_r (NULL, " ", &save_ptr))
-  {   //Push token onto token list
-      token += '\0';
-      list_push_front(&token_list, token);     
-  }
-  argc = list_size(&token_list);
-  /* END OF OUR CODE */
+  strlcpy (my_file_name, file_name, PGSIZE);
   
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, my_file_name);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
-  
-  //Added this line:  
-  //lock_release(lck);    //Release lock
-  //End of addition
+    palloc_free_page (my_file_name); 
   
   return tid;
 }
@@ -508,17 +472,21 @@ setup_stack (void **esp)
           t_size =  sizeof(the_sentinel);
           *esp -= t_size;
           memcpy(*esp, the_sentinel, t_size);
-          hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
+          //hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
           *esp -= t_size;   
-                    
+          
+          //Tokenize my_file_name
           //Push all token addresses on the stack
           char** argv;
-          while(!list_empty(token_list)){      
-              char* token = list_pop_front(token_list);           
+          char *token, *save_ptr;
+          for (token = strtok_r (my_file_name, " ", &save_ptr); token != NULL;
+              token = strtok_r (NULL, " ", &save_ptr))
+          {                    
+              token += '\0';
               t_size = sizeof(&token);
               *esp -= t_size;
               memcpy (*esp, &token, t_size);
-              hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
+              //hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
               *esp -= t_size;             
               argv = &esp;
           }                    
@@ -527,21 +495,21 @@ setup_stack (void **esp)
         t_size = sizeof(argv);
         *esp -= t_size;
         memcpy (*esp, argv, t_size);
-        hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
+        //hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
         *esp -= t_size;  
         
         //Push the number of arguments
         t_size = sizeof(argc);
         *esp -= t_size;
         memcpy (*esp, argc, t_size);
-        hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
+        //hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
         *esp -= t_size;  
         
         //Push fake return address
         void* fake_address = 0;
         t_size = sizeof(fake_address);
         memcpy (*esp, fake_address, t_size);
-        hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
+        //hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
         *esp -= t_size;  
                 
         //Move esp to PHYS_BASE - 12
@@ -552,6 +520,7 @@ setup_stack (void **esp)
       else
         palloc_free_page (kpage);
     }
+  hex_dump (*esp, *esp, PHYS_BASE - *esp, true);
   return success;
 }
 
