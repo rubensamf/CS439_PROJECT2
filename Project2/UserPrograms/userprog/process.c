@@ -18,11 +18,20 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
-static thread_func start_process NO_RETURN;
-static bool load (const char *cmdline, void (**eip) (void), void **esp);
-//static struct list token_list;
+/*       OUR CODE                                                               *
+ *       Required variables and structures for setting up stack                 */
 static char *my_file_name;
 static size_t argc;
+struct my_element
+{
+    struct list_elem elem;
+    char* token_address;
+};
+/*       END OF OUR CODE                                                        */
+
+static thread_func start_process NO_RETURN;
+static bool load (const char *cmdline, void (**eip) (void), void **esp);
+
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -31,7 +40,6 @@ static size_t argc;
 tid_t
 process_execute (const char *file_name) 
 {  
-  //char *my_file_name;
   tid_t tid;
   
   /* Make a copy of FILE_NAME.
@@ -444,78 +452,109 @@ setup_stack (void **esp)
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success){
           
-          /* OUR CODE STARTS HERE */
-          /* Push token addresses on the stack by decrementing the stack pointer
-           * and doing memcpy() on the stack pointer and token address
-           * Decrement stack pointer again to make space for the next address */
-          /*
-          struct lock *lck;
-          lock_init(lck);
-          lock_acquire(lck);    //Acquire lock
-          */
-          //Move stack pointer (from 1st bullet of 3.2)
-          *esp = PHYS_BASE - 12; 
+/*        OUR CODE STARTS HERE                                                  *
+ *        Move stack pointer (from 1st bullet of 3.2)                           */
+          *esp = PHYS_BASE - 12;
+          
+/*        - Example Stack Frame from project description -                      *
+ *           (Assuming PHYS_BASE is 0xc0000000):                                *
+ *                                                                              *
+ *        Address	    Name            Data        Type                        *
+ *  (i)   0xbffffffc	argv[3][...]	bar\0       char[4]                     *
+ *        0xbffffff8	argv[2][...]	foo\0       char[4]                     *
+ *        0xbffffff5	argv[1][...]	-l\0        char[3]                     *
+ *        0xbfffffed	argv[0][...]	/bin/ls\0	char[8]                     *
+ *  (ii)  0xbfffffec	word-align      0           uint8_t                     *
+ *  (iii) 0xbfffffe8	argv[4]         0           char *                      *
+ *  (iv)  0xbfffffe4	argv[3]         0xbffffffc	char *                      *
+ *        0xbfffffe0	argv[2]         0xbffffff8	char *                      *
+ *        0xbfffffdc	argv[1]         0xbffffff5	char *                      *
+ *        0xbfffffd8	argv[0]         0xbfffffed	char *                      *
+ * (v)    0xbfffffd4	argv            0xbfffffd8	char **                     *
+ * (vi)   0xbfffffd0	argc            4           int                         *
+ * (vii)  0xbfffffcc	return address	0           void (*) ()                 *
+ *                                                                              *
+ *        In this example, the stack pointer initialized to 0xbfffffcc.         */
           size_t t_size;
           
-          /*
-          //Push word_align onto stack
+/*  (i)   Tokenize my_file_name                                                 *
+ *        Push all token addresses on the stack                                 */
+          char** argv;
+          char *token, *save_ptr;
+          struct list the_token_addresses;
+          list_init(the_token_addresses);
+          struct list_elem *e;
+/*        Tokenizer Loop                                                        */
+          for (token = strtok_r (my_file_name, " ", &save_ptr); token != NULL;
+               token = strtok_r (NULL, " ", &save_ptr))
+          {                    
+              token += '\0';
+              t_size = sizeof(token);
+              *esp -= t_size;
+/*        Push token on stack                                                   */
+              memcpy (*esp, token, t_size);
+/*        Push token address onto list of token addresses                       */
+              struct my_element token_address;
+              token_address.token_address = *esp;
+              list_push_front(&the_token_addresses, &(token_address.elem));              
+              *esp -= t_size;             
+          }
+          
+/*  (ii)  Push word_align onto stack                                            */          
           uint8_t word_align = 0;
           t_size = sizeof(word_align);
           *esp -= t_size;
           memcpy (*esp, word_align, t_size);
-          hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
-          *esp -= t_size;   
-          */
+          *esp -= t_size;
           
-          // Push zero (the terminating character onto stack
+/*  (iii) Push zero (the terminating character onto stack                       */
           char* the_sentinel = 0;
           t_size =  sizeof(the_sentinel);
           *esp -= t_size;
           memcpy(*esp, the_sentinel, t_size);
-          //hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
-          *esp -= t_size;   
+          *esp -= t_size;
+
+/*        Get the number of arguments before poping the token address list      */
+          argc = list_size(&the_token_addresses);
           
-          //Tokenize my_file_name
-          //Push all token addresses on the stack
-          char** argv;
-          char *token, *save_ptr;
-          for (token = strtok_r (my_file_name, " ", &save_ptr); token != NULL;
-              token = strtok_r (NULL, " ", &save_ptr))
-          {                    
-              token += '\0';
-              t_size = sizeof(&token);
+/*  (iv)  Pop token_addresses off token list and push them on the process stack */
+          while (!list_empty(&the_token_addresses)) 
+          {
+              struct list_elem *t = list_pop_front(&the_token_addresses);
+              struct my_element *f = list_entry (t, struct my_element, elem);
+              char *token_address = f.token_address;
+              
+              t_size = sizeof(token_address);
               *esp -= t_size;
-              memcpy (*esp, &token, t_size);
-              //hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
-              *esp -= t_size;             
-              argv = &esp;
-          }                    
+              
+/*            Push token address on the stack                                   */
+              memcpy (*esp, token_address, t_size);
+              
+              *esp -= t_size;
+          }
+          argc = list_size(the_token_addresses)
+          
+/*  (v)   Push address of token list                                             */
+          t_size = sizeof(argv);
+          *esp -= t_size;
+          memcpy (*esp, argv, t_size);
+          *esp -= t_size;  
         
-        //Push address of token list
-        t_size = sizeof(argv);
-        *esp -= t_size;
-        memcpy (*esp, argv, t_size);
-        //hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
-        *esp -= t_size;  
+/*  (vi)  Push the number of arguments                                           */
+          t_size = sizeof(argc);
+          *esp -= t_size;
+          memcpy (*esp, argc, t_size);
+          *esp -= t_size;  
         
-        //Push the number of arguments
-        t_size = sizeof(argc);
-        *esp -= t_size;
-        memcpy (*esp, argc, t_size);
-        //hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
-        *esp -= t_size;  
-        
-        //Push fake return address
-        void* fake_address = 0;
-        t_size = sizeof(fake_address);
-        memcpy (*esp, fake_address, t_size);
-        //hex_dump (*esp, *esp, *esp - PHYS_BASE, true);
-        *esp -= t_size;  
-                
-        //Move esp to PHYS_BASE - 12
-        *esp = PHYS_BASE - 12; 
-        //lock_release(lck);      //Release lock
-        /*OUR CODE ENDS HERE*/
+/*  (vii) Push fake return address                                               */
+          void* fake_address = 0;
+          t_size = sizeof(fake_address);
+          memcpy (*esp, fake_address, t_size);
+          *esp -= t_size;
+          
+/*        Move esp to PHYS_BASE - 12                                            */
+          *esp = PHYS_BASE - 12;      
+/*        OUR CODE ENDS HERE                                                    */
       }
       else
         palloc_free_page (kpage);
