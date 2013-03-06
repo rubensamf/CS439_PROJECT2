@@ -508,73 +508,95 @@ setup_stack (void **esp)
 /*        Tokenizer Loop                                                        */
           for (token = strtok_r (my_file_name, " ", &save_ptr); token != NULL;
                token = strtok_r (NULL, " ", &save_ptr))
-          {                    
+          {
               token += '\0';
               t_size = sizeof(token);
               *esp -= t_size;
-/*        Push token on stack                                                   */
+              
+              /* Push token on stack */
+              printf ("token: %s\n", token);
+              printf ("address: %x\n", &esp);
+              argc+=1;
               memcpy (*esp, token, t_size);
-/*        Push token address onto list of token addresses                       */
+              
+              /* Push token address onto list of token addresses */
               struct my_element token_address;
               token_address.token_address = *esp;
-              list_push_front(&the_token_addresses, &(token_address.elem));              
-              *esp -= t_size;             
+              list_push_front(&the_token_addresses, &(token_address.elem));
+              *esp -= t_size;
           }
           
 /*  (ii)  Push word_align onto stack                                            */          
-          uint8_t word_align = 0;
-          t_size = sizeof(word_align);
           *esp -= t_size;
-          memcpy (*esp, word_align, t_size);
+          uint8_t* word_align = *esp;
+          *word_align = 0;
+          
+          t_size = sizeof(word_align);
+          printf ("word_align: %x\n", &word_align);
+          memcpy (*esp, &word_align, t_size);
           *esp -= t_size;
           
 /*  (iii) Push zero (the terminating character onto stack                       */
-          char* the_sentinel = 0;
-          t_size =  sizeof(the_sentinel);
           *esp -= t_size;
-          memcpy(*esp, the_sentinel, t_size);
+          char* the_sentinel = *esp;
+          *the_sentinel = 0;
+          printf ("the_sentinel: %x\n", &the_sentinel);
+          t_size = sizeof(the_sentinel);
+          
+          memcpy(*esp, &the_sentinel, t_size);
           *esp -= t_size;
 
 /*        Get the number of arguments before poping the token address list      */
-          argc = list_size(&the_token_addresses);
+          //argc = list_size(&the_token_addresses);
           
 /*  (iv)  Pop token_addresses off token list and push them on the process stack */
-          while (!list_empty(&the_token_addresses)) 
+          //while (!list_empty(&the_token_addresses))
+          int i;
+          struct list_elem *e;
+          e = list_begin (&the_token_addresses);
+          for(i = 0; i < argc; i++)
           {
-              struct list_elem *t = list_pop_front(&the_token_addresses);
+              //struct list_elem *t = list_pop_front(&the_token_addresses);
+              struct list_elem *t = list_next (e);
               struct my_element *f = list_entry (t, struct my_element, elem);
-              char *token_address = f.token_address;
+              char *token_address = f->token_address;
               
               t_size = sizeof(token_address);
               *esp -= t_size;
               
-/*            Push token address on the stack                                   */
+              /* Push token address on the stack */
+              printf ("token: %s\n", token_address);
+              printf ("token_address: %x\n", &token_address);
               memcpy (*esp, token_address, t_size);
               
               *esp -= t_size;
           }
-          argc = list_size(the_token_addresses)
+          //argc = list_size(&the_token_addresses);
           
 /*  (v)   Push address of token list                                             */
           t_size = sizeof(argv);
           *esp -= t_size;
-          memcpy (*esp, argv, t_size);
-          *esp -= t_size;  
+          printf ("argv: %x\n", &argv);
+          memcpy (*esp, &argv, t_size);
+          *esp -= t_size; 
         
 /*  (vi)  Push the number of arguments                                           */
           t_size = sizeof(argc);
           *esp -= t_size;
-          memcpy (*esp, argc, t_size);
-          *esp -= t_size;  
+          printf ("#arguments: %d\n", argc);
+          memcpy (*esp, &argc, t_size);
+          *esp -= t_size;
         
 /*  (vii) Push fake return address                                               */
           void* fake_address = 0;
           t_size = sizeof(fake_address);
-          memcpy (*esp, fake_address, t_size);
+          printf ("fake_address: %s\n", fake_address);
+          memcpy (*esp, &fake_address, t_size);
           *esp -= t_size;
           
 /*        Move esp to PHYS_BASE - 12                                            */
-          *esp = PHYS_BASE - 12;      
+          //*esp = PHYS_BASE - 12;     
+ 
 /*        OUR CODE ENDS HERE                                                    */
       }
       else
