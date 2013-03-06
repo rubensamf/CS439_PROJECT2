@@ -20,7 +20,7 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-static struct list* token_list;
+static struct list token_list;
 static size_t argc;
 
 /* Starts a new thread running a user program loaded from
@@ -54,23 +54,23 @@ process_execute (const char *file_name)
   size_t size = strlen(fn_copy, MAX_SIZE);
   size *= sizeof(char*);
   */
-   
+   /*
   struct lock *lck;
   lock_init(lck);
   lock_acquire(lck);    // Acquire lock
-  
+  */
   char *token, *save_ptr; 
-  list_init(token_list);
+  //token_list = PHYS_BASE - 12;
+  list_init(&token_list);
   
   /* Place tokens into the list of tokens, First In Last Out */
   for (token = strtok_r (fn_copy, " ", &save_ptr); token != NULL;
        token = strtok_r (NULL, " ", &save_ptr))
-  {
-      //Push token onto token list
-      list_push_front(token_list, token);
-      //printf ("'%s'\n", token);       
+  {   //Push token onto token list
+      token += '\0';
+      list_push_front(&token_list, (list_elem *) token);     
   }
-  argc = list_size(token_list);
+  argc = list_size(&token_list);
   /* END OF OUR CODE */
   
   /* Create a new thread to execute FILE_NAME. */
@@ -79,7 +79,7 @@ process_execute (const char *file_name)
     palloc_free_page (fn_copy); 
   
   //Added this line:  
-  lock_release(lck);    //Release lock
+  //lock_release(lck);    //Release lock
   //End of addition
   
   return tid;
@@ -484,10 +484,11 @@ setup_stack (void **esp)
           /* Push token addresses on the stack by decrementing the stack pointer
            * and doing memcpy() on the stack pointer and token address
            * Decrement stack pointer again to make space for the next address */
+          /*
           struct lock *lck;
           lock_init(lck);
           lock_acquire(lck);    //Acquire lock
-          
+          */
           //Move stack pointer (from 1st bullet of 3.2)
           *esp = PHYS_BASE - 12; 
           size_t t_size;
@@ -545,7 +546,7 @@ setup_stack (void **esp)
                 
         //Move esp to PHYS_BASE - 12
         *esp = PHYS_BASE - 12; 
-        lock_release(lck);      //Release lock
+        //lock_release(lck);      //Release lock
         /*OUR CODE ENDS HERE*/
       }
       else
