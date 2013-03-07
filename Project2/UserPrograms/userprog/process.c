@@ -524,26 +524,31 @@ setup_stack (void **esp)
               /* Push token address onto list of token addresses */
               struct my_element token_address;
               token_address.token_address = *esp;
+              printf ("address: %x\n", *esp);
+//FIXME check element usage
               list_push_front(&the_token_addresses, &(token_address.elem));            
           }
           
 /*  (ii)  Push word_align onto stack                                            */          
+          uint8_t word_align = 0;
+//FIXME needs to not only push one, but calculate number to push
+          t_size = sizeof(word_align) * (strlen(my_file_name) % 4);
           *esp -= t_size;
-          uint8_t* word_align = *esp;
-          *word_align = 0;
-          
-          t_size = sizeof(word_align);
-          printf ("word_align: %x\n", &word_align);
+          printf ("word_align: %d\n", word_align);
+              printf ("size %u\n", t_size);
+              printf ("address: %x\n", *esp);
           memcpy (*esp, &word_align, t_size);
+  hex_dump (*esp, *esp, PHYS_BASE - *esp, true);
           
 /*  (iii) Push zero (the terminating character onto stack                       */
-          *esp -= t_size;
-          char* the_sentinel = *esp;
+          *esp -= 4;
+          int* the_sentinel = *esp;
           *the_sentinel = 0;
           printf ("the_sentinel: %x\n", &the_sentinel);
           t_size = sizeof(the_sentinel);
           
-          memcpy(*esp, &the_sentinel, t_size);
+          //memcpy(*esp, &the_sentinel, t_size);
+  hex_dump (*esp, *esp, PHYS_BASE - *esp, true);
 
 /*        Get the number of arguments before poping the token address list      */
           //argc = list_size(&the_token_addresses);
@@ -551,12 +556,12 @@ setup_stack (void **esp)
 /*  (iv)  Pop token_addresses off token list and push them on the process stack */
           //while (!list_empty(&the_token_addresses))
           int i;
-          struct list_elem *e;
-          e = list_begin (&the_token_addresses);
+          //struct list_elem *t = list_begin (&the_token_addresses);
+//FIXME pushes same address twice (think both addresses are there)
           for(i = 0; i < argc; i++)
           {
-              //struct list_elem *t = list_pop_front(&the_token_addresses);
-              struct list_elem *t = list_next (e);
+              struct list_elem *t = list_pop_front(&the_token_addresses);
+              //t = list_next (t);
               struct my_element *f = list_entry (t, struct my_element, elem);
               char *token_address = f->token_address;
               
@@ -565,25 +570,28 @@ setup_stack (void **esp)
               
               /* Push token address on the stack */
               //printf ("token: %s\n", token_address);
-              //printf ("token_address: %x\n", token_address);
+              printf ("token_address: %x\n", token_address);
               memcpy (*esp, &token_address, t_size);
           }
+  hex_dump (*esp, *esp, PHYS_BASE - *esp, true);
           //argc = list_size(&the_token_addresses);
           
 /*  (v)   Push address of token list                                             */
-          t_size = sizeof(argv);
-          *esp -= t_size;
-          printf ("argv: %x\n", &argv);
-          memcpy (*esp, &argv, t_size); 
+          *esp -= 4;
+          *(int *)*esp = *esp+4;
+          //printf ("argv: %x\n", &argv);
+          //memcpy (*esp, &argv, t_size); 
         
 /*  (vi)  Push the number of arguments                                           */
           t_size = sizeof(argc);
           *esp -= t_size;
           printf ("#arguments: %d\n", argc);
           memcpy (*esp, &argc, t_size);
+  hex_dump (*esp, *esp, PHYS_BASE - *esp, true);
         
 /*  (vii) Push fake return address                                               */
           void* fake_address = *esp;
+          *esp -= 4;
           fake_address = 0;
           t_size = sizeof(fake_address);
           printf ("fake_address: %s\n", &fake_address);
