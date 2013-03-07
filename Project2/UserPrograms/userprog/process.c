@@ -473,7 +473,8 @@ setup_stack (void **esp)
           
 /*        OUR CODE STARTS HERE                                                  *
  *        Move stack pointer (from 1st bullet of 3.2)                           */
-          *esp = PHYS_BASE - 12;
+          //*esp = PHYS_BASE - 12;
+          *esp = PHYS_BASE;
           
 /*        - Example Stack Frame from project description -                      *
  *           (Assuming PHYS_BASE is 0xc0000000):                                *
@@ -499,7 +500,7 @@ setup_stack (void **esp)
 /*  (i)   Tokenize my_file_name                                                 *
  *        Push all token addresses on the stack                                 */
           char** argv;
-          int argc;
+          int argc = 0;
           char *token, *save_ptr;
           struct list the_token_addresses;
           list_init(&the_token_addresses);
@@ -510,20 +511,21 @@ setup_stack (void **esp)
                token = strtok_r (NULL, " ", &save_ptr))
           {
               token += '\0';
-              t_size = sizeof(token);
+              t_size = sizeof(token) * (strlen(token) + 1);
               *esp -= t_size;
               
               /* Push token on stack */
               printf ("token: %s\n", token);
-              printf ("address: %x\n", &esp);
+              printf ("size %u\n", t_size);
+              printf ("address: %x\n", *esp);
               argc+=1;
               memcpy (*esp, token, t_size);
+              *esp -= t_size;
               
               /* Push token address onto list of token addresses */
               struct my_element token_address;
               token_address.token_address = *esp;
-              list_push_front(&the_token_addresses, &(token_address.elem));
-              *esp -= t_size;
+              list_push_front(&the_token_addresses, &(token_address.elem));            
           }
           
 /*  (ii)  Push word_align onto stack                                            */          
@@ -566,8 +568,8 @@ setup_stack (void **esp)
               
               /* Push token address on the stack */
               printf ("token: %s\n", token_address);
-              printf ("token_address: %x\n", &token_address);
-              memcpy (*esp, token_address, t_size);
+              printf ("token_address: %x\n", token_address);
+              memcpy (*esp, &token_address, t_size);
               
               *esp -= t_size;
           }
@@ -588,9 +590,10 @@ setup_stack (void **esp)
           *esp -= t_size;
         
 /*  (vii) Push fake return address                                               */
-          void* fake_address = 0;
+          void* fake_address = *esp;
+          fake_address = 0;
           t_size = sizeof(fake_address);
-          printf ("fake_address: %s\n", fake_address);
+          printf ("fake_address: %s\n", &fake_address);
           memcpy (*esp, &fake_address, t_size);
           *esp -= t_size;
           
