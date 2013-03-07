@@ -510,7 +510,7 @@ setup_stack (void **esp)
           for (token = strtok_r (my_file_name, " ", &save_ptr); token != NULL;
                token = strtok_r (NULL, " ", &save_ptr))
           {
-              token += '\0';
+              //ans token += '\0';
               t_size = sizeof(char) * (strlen(token) + 1);
               *esp -= t_size;
               
