@@ -526,7 +526,7 @@ setup_stack (void **esp)
               token_address.token_address = *esp;
               printf ("address: %x\n", *esp);
 //FIXME check element usage
-              list_push_front(&the_token_addresses, &(token_address.elem));            
+              list_push_front(&the_token_addresses, &token_address);            
           }
           
 /*  (ii)  Push word_align onto stack                                            */          
@@ -554,12 +554,12 @@ setup_stack (void **esp)
           //argc = list_size(&the_token_addresses);
           
 /*  (iv)  Pop token_addresses off token list and push them on the process stack */
-          //while (!list_empty(&the_token_addresses))
-          int i;
+          while (!list_empty(&the_token_addresses)){
+          //int i;
           //struct list_elem *t = list_begin (&the_token_addresses);
 //FIXME pushes same address twice (think both addresses are there)
-          for(i = 0; i < argc; i++)
-          {
+          //for(i = 0; i < argc; i++)
+          //{
               struct list_elem *t = list_pop_front(&the_token_addresses);
               //t = list_next (t);
               struct my_element *f = list_entry (t, struct my_element, elem);
