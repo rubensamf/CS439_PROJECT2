@@ -504,7 +504,7 @@ setup_stack (void **esp)
           char *token, *save_ptr;
           struct list the_token_addresses;
           list_init(&the_token_addresses);
-          printf ("my_file_name: %s\n", my_file_name);
+          printf ("\tmy_file_name: %s\n", my_file_name);
 
 /*        Tokenizer Loop                                                        */
           for (token = strtok_r (my_file_name, " ", &save_ptr); token != NULL;
@@ -515,16 +515,16 @@ setup_stack (void **esp)
               *esp -= t_size;
               
               /* Push token on stack */
-              printf ("token: %s\n", token);
-              printf ("size %u\n", t_size);
-              printf ("address: %x\n", *esp);
+              printf ("\ttoken: %s\n", token);
+              printf ("\tsize1: %u\n", t_size);
+              printf ("\taddress1: %x\n", *esp);
               argc+=1;
               memcpy (*esp, token, t_size);
               
               /* Push token address onto list of token addresses */
               struct my_element token_address;
               token_address.token_address = *esp;
-              printf ("address: %x\n", *esp);
+              printf ("\taddress2: %x\n", *esp);
 //FIXME check element usage
               list_push_front(&the_token_addresses, &token_address);            
           }
@@ -534,9 +534,9 @@ setup_stack (void **esp)
 //FIXME needs to not only push one, but calculate number to push
           t_size = sizeof(word_align) * (strlen(my_file_name) % 4);
           *esp -= t_size;
-          printf ("word_align: %d\n", word_align);
-              printf ("size %u\n", t_size);
-              printf ("address: %x\n", *esp);
+          printf ("\tword_align: %d\n", word_align);
+              printf ("\tsize2: %u\n", t_size);
+              printf ("\taddress3: %x\n", *esp);
           memcpy (*esp, &word_align, t_size);
   hex_dump (*esp, *esp, PHYS_BASE - *esp, true);
           
@@ -544,7 +544,7 @@ setup_stack (void **esp)
           *esp -= 4;
           int* the_sentinel = *esp;
           *the_sentinel = 0;
-          printf ("the_sentinel: %x\n", &the_sentinel);
+          printf ("\tthe_sentinel: %x\n", &the_sentinel);
           t_size = sizeof(the_sentinel);
           
           //memcpy(*esp, &the_sentinel, t_size);
@@ -570,7 +570,7 @@ setup_stack (void **esp)
               
               /* Push token address on the stack */
               //printf ("token: %s\n", token_address);
-              printf ("token_address: %x\n", token_address);
+              printf ("\ttoken_address: %x\n", token_address);
               memcpy (*esp, &token_address, t_size);
           }
   hex_dump (*esp, *esp, PHYS_BASE - *esp, true);
@@ -585,7 +585,7 @@ setup_stack (void **esp)
 /*  (vi)  Push the number of arguments                                           */
           t_size = sizeof(argc);
           *esp -= t_size;
-          printf ("#arguments: %d\n", argc);
+          printf ("\t#arguments: %d\n", argc);
           memcpy (*esp, &argc, t_size);
   hex_dump (*esp, *esp, PHYS_BASE - *esp, true);
         
@@ -594,7 +594,7 @@ setup_stack (void **esp)
           *esp -= 4;
           fake_address = 0;
           t_size = sizeof(fake_address);
-          printf ("fake_address: %s\n", &fake_address);
+          printf ("\tfake_address: %s\n", &fake_address);
           memcpy (*esp, &fake_address, t_size);
           
 /*        Move esp to PHYS_BASE - 12                                            */
