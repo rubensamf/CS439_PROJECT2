@@ -18,6 +18,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+const int MAX_NUMBER_OF_ARGUMENTS = 64;
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
@@ -88,6 +89,8 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  while(true)
+  {}
   return -1;
 }
 
@@ -195,7 +198,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (void **esp,  int argc, char **argv, int word_align);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -204,23 +207,29 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 			/*---OUR CODE STARTS HERE---*/
 /* Helper function to compute the number of tokens in a string. */
 int
-compute_num_tokens(const char *file_name)
+compute_num_tokens(const char *file_name, int fn_length)
 {
 	//ASSERT (file_name != NULL);
 	/*---DECLARE VARIABLES AND ALLOCATE MEMORY---*/
 	int argc = 0;
 	char *fn_copy, *token, *save_ptr;
 	/*---COPY OF FILE NAME---*/
-	fn_copy = palloc_get_page (0);
+	fn_copy = palloc_get_page(PAL_USER);
 	if (fn_copy == NULL)
 		return TID_ERROR;
-	strlcpy (fn_copy, file_name, PGSIZE);
-
+	//strlcpy (fn_copy, file_name, PGSIZE);
+        memcpy (fn_copy, file_name, fn_length + 1);
+        
 	/*---COUNT THE NUMBER OF TOKENS, STORE IN ARGC---*/
 	for (token = strtok_r (fn_copy, " ", &save_ptr); token != NULL;
 			token = strtok_r (NULL, " ", &save_ptr))
-	{ argc++; }
-	palloc_free_page (fn_copy);
+	{
+            /*---Ignore White Space---*/
+            while(*(save_ptr) == ' ')
+                save_ptr++;
+            argc++; 
+        }
+	//palloc_free_page (fn_copy);
 	return argc;
 }
 /* Helper function to grab just the first token in file name,
@@ -230,9 +239,10 @@ get_executable_file(const char *file_name)
 {
 	//ASSERT (file_name != NULL);
 	/*---DECLARE VARIABLES AND ALLOCATE MEMORY---*/
-	char *fn_copy, *executable_file, *save_ptr;
+	char *fn_copy, *save_ptr;
+        char *executable_file;
 	/*---COPY OF FILE NAME---*/
-	fn_copy = palloc_get_page (0);
+	fn_copy = palloc_get_page (PAL_USER);
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
@@ -251,38 +261,36 @@ tokenize(const char* file_name, int argc)
 	/*---DECLARE VARIABLES AND ALLOCATE MEMORY---*/
 	int i = 0;
 	char *fn_copy, *token, *save_ptr;
-	char **argv;
+	char *argv[MAX_NUMBER_OF_ARGUMENTS];
+        //char *argv;
+        //argv = palloc_get_page(PAL_USER);
 	/*---COPY OF FILE NAME---*/
-	fn_copy = palloc_get_page (0);
+	fn_copy = palloc_get_page (PAL_USER);
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 	/*---ALLOCATE MEMORY FOR ARGV FROM USER POOL---*/
-	argv = palloc_get_multiple(PAL_USER, argc);
+	//argv = palloc_get_multiple(PAL_USER, argc);
 	/*--TOKENIZE FILE NAME---*/
-	for (token = strtok_r (fn_copy, " ", &save_ptr); token != NULL;
-			token = strtok_r (NULL, " ", &save_ptr))
-	{
-		/*---COPY TOKEN INTO argv[i]---*/
-		strlcpy (argv[i], token, PGSIZE);
-		/*---ADD NULL TERMINATOR TO argv[i] (strlcat() DOES THIS)---*/
-		//ASSERT (sizeof(argv[i]) > 0);
-		size_t size = sizeof(argv[i]) + 1;
-		//ASSERT (size > 1);
-		strlcat(argv[i], "", size);
-		//ASSERT (sizeof(argv[i]) > size);
-		/*---INCREMENT ARGV INDEX---*/
-		i++;
+	for (token = strtok_r(fn_copy, " ", &save_ptr); token != NULL;
+			token = strtok_r(NULL, " ", &save_ptr))
+	{                       
+            /*---CALCULATE SIZE: SIZE OF CHARACTER * LENGTH OF TOKEN---*/
+            size_t size = sizeof(char) * (strlen(token) + 1);
+            /*---ADD NULL TERMINATOR TO token---*/ 
+            /*---COPY TOKEN INTO argv[i]---*/
+            argv[i] = token;
+            ASSERT (argv[i] != NULL);
 	}
 	return argv;
 }
 /* Helper function to compute the word align. */
 int
-compute_word_align(const char *file_name, int argc)
+compute_word_align(int fn_length, int argc)
 {
 	//ASSERT (file_name != NULL);
 	//ASSERT (argc > 0);
-	return 4 - ((strlen(file_name) + argc) % 4);
+	return 4 - ((fn_length + argc) % 4);
 }
 			/*---OUR CODE ENDS HERE----*/
 
@@ -307,15 +315,19 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   	  	  /*---OUR CODE STARTS HERE---*/
-  
+  int fn_length = strlen(file_name);
   /*---Get the executable file---*/
-  char *executable_file = get_executable_file(file_name);
+  char *executable_file;
+  executable_file = get_executable_file(file_name);
   /*---Compute the number of arguments---*/
-  int argc = compute_num_tokens(file_name);
+  int argc = compute_num_tokens(file_name, fn_length);
+  /*---argc cannot be more than MAX_NUMBER_OF_ARGUMENTS (= 64)---*/
+  ASSERT (argc <= MAX_NUMBER_OF_ARGUMENTS);
   /*---Tokenize file name into argv---*/
-  char **argv = tokenize(file_name);
+  char **argv;
+  argv = tokenize(file_name, argc);
   /*---Compute word align*---*/
-  int word_align = compute_word_align(file_name, argc);
+  int word_align = compute_word_align(fn_length, argc);
 
   	  	  /*---OUR CODE ENDS HERE----*/
 
@@ -555,18 +567,17 @@ setup_stack (void **esp,  int argc, char **argv, int word_align)
         int* address_of_argc = &argc;
 
         /*---(i) Loop through argv and push arguments onto memory---*/
+        
         int i;
-        for(i = argc - 1; i >= 0; i--)
+        for (i = argc-1; i >= 0; i--)
         {
-        	/*---Decrement stack pointer and push arguments onto memory---*/
-        	size_t t_size = sizeof(char) * (strlen(argv[i] + 1));
-        	*esp -= t_size;
-        	/*  +1 for null terminating character,
-        		which is not counted by strlen()	*/
-        	/*---Push argv[i] onto stack---*/
-        	memcpy(*esp, argv[i], t_size);
+            size_t t_size = strlen(&argv[i]);
+            *esp -= t_size + 1;
+            /*---Push argv[i] onto stack---*/
+            memcpy(*esp, &argv[i], t_size + 1);
         }
-
+        //ASSERT (ct == argc);
+        
         /*---(ii) Push word align onto stack---*/
         *esp -= word_align;
 
@@ -584,7 +595,7 @@ setup_stack (void **esp,  int argc, char **argv, int word_align)
 
         /*---(v) Push address of argv---*/
         *esp -= argv_mem_address_size;
-        memcpy(*esp, &arg[0], argv_mem_address_size);
+        memcpy(*esp, &argv[0], argv_mem_address_size);
 
         /*---(vi) Push the number of arguments---*/
         *esp -= argc_size;
@@ -592,12 +603,15 @@ setup_stack (void **esp,  int argc, char **argv, int word_align)
 
         /*---(vii) Push fake return address---*/
         *esp -= fake_return_address;
-
         		/*---OUR CODE ENDS HERE----*/
       }
       else
-      { palloc_free_page (kpage); }
+    	  palloc_free_page (kpage);
     }
+  /*---ADDED HEX DUMP---*/  
+  printf("\n\t/*---HEX DUMP---*/\n\n");
+  hex_dump (*esp, *esp, PHYS_BASE - *esp, true);
+  printf("\n");
   return success;
 }
 
@@ -613,10 +627,12 @@ setup_stack (void **esp,  int argc, char **argv, int word_align)
 static bool
 install_page (void *upage, void *kpage, bool writable)
 {
-  struct thread *t = thread_current ();
+  struct thread *t = thread_current();
 
   /* Verify that there's not already a page at that virtual
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
 }
+
+
