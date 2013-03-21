@@ -501,7 +501,7 @@ setup_stack (void **esp)
 * In this example, the stack pointer initialized to 0xbfffffcc. */
           
           int argc = 0;
-          size_t t_size;
+          //size_t t_size;
           
 /* (i) Tokenize my_file_name *
 * Push all token addresses on the stack */
@@ -521,17 +521,17 @@ setup_stack (void **esp)
                token = strtok_r (NULL, " ", &save_ptr))
           {
               token += '\0';
-              t_size = sizeof(char) * (strlen(token) + 1);
-              *esp -= t_size;
-              
+              //size_t t_size = sizeof(char) * (strlen(token) + 1);
+              //*esp -= t_size;
+              *esp -= sizeof(char) * (strlen(token) + 1);
               /* Push token on stack */
               argv[argc] = *esp;
               //printf ("\ttoken: %s\n", token);
               //printf ("\ttoken size: %u\n", t_size);
-              printf ("\ttoken address: %x\n", argv[argc]);
-              memcpy (*esp, token, t_size);
+              //printf ("\ttoken address: %x\n", argv[argc]);
+              memcpy (*esp, token, sizeof(char) * (strlen(token) + 1));
               
-              argc+=1;
+              argc += 1;
               word_align_size += strlen(token) + 1;
               /* Push token address onto list of token addresses */
               
@@ -612,9 +612,9 @@ setup_stack (void **esp)
               /* Push token address on the stack */
               //printf ("token: %s\n", token_address);
               //printf ("\ttoken_address: %x\n\n", &argv[i]);
-              memcpy (*esp,  &argv[i], t_size);
+              memcpy (*esp,  &argv[i], sizeof(&argv[i]));
           }
-          hex_dump (*esp, *esp, PHYS_BASE - *esp, true);
+          //hex_dump (*esp, *esp, PHYS_BASE - *esp, true);
           //argc = list_size(&the_token_addresses);
           
         /* (v) Push address of token list */
@@ -622,16 +622,17 @@ setup_stack (void **esp)
           int *xesp = *esp+4;
           //printf ("\targv: %x\n", &argv[0]);
 	 memcpy (*esp, &xesp, 4);
-          hex_dump (*esp, *esp, PHYS_BASE - *esp, true);
+         //hex_dump (*esp, *esp, PHYS_BASE - *esp, true);
         
           
 /* (vi) Push the number of arguments */     
           int* x = &argc;
         
-          t_size = sizeof(int);
-          *esp -= t_size;
-          
-          memcpy (*esp, x, t_size);
+          //t_size = sizeof(int);
+          //*esp -= t_size;
+          *esp -= sizeof(int);
+          //memcpy (*esp, x, t_size);
+          memcpy (*esp, x, sizeof(int));
           //printf ("\t#arguments: %d\n", argc);
 
         
@@ -651,7 +652,7 @@ setup_stack (void **esp)
 
   hex_dump (*esp, *esp, PHYS_BASE - *esp, true);
 
-  printf ("stack esp=%x\n", &esp);
+  //printf ("stack esp=%x\n", &esp);
   return success;
 }
 
