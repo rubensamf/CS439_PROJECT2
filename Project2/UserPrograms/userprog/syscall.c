@@ -5,6 +5,7 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/init.h"
+#include "threads/vaddr.h"
 #include "devices/shutdown.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
@@ -21,7 +22,10 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
+
     int *sp = f->esp;
+
+    printf ("*sp=%d\n",*sp);
     switch(*sp)
     {       
         case SYS_HALT:
@@ -53,9 +57,15 @@ syscall_handler (struct intr_frame *f UNUSED)
              *  Thus, the parent process cannot return from the exec until it knows whether the child 
              *  process successfully loaded its executable. You must use appropriate synchronization to ensure this. 
              */
-          f->eax = process_execute((char *) *(sp + 1));
-          break;
-
+          uint32_t* dir= (uint32_t*)sp;
+          
+          //extract the filename 
+          char *file = (char*)dir[1];  
+          if(file==NULL||*file==NULL)
+            thread_exit();  
+            
+          printf("SYS_EXEC = %s",file);  
+          f->eax = process_execute(file);
         }
         
         case SYS_WAIT:
@@ -73,11 +83,20 @@ syscall_handler (struct intr_frame *f UNUSED)
              *  Creating a new file does not open it: opening the new file is a separate 
              *  operation which would require a open system call. 
              */
+         
           uint32_t* dir= (uint32_t*)sp;
-          char *file = (char*)dir[1];
-          unsigned initial_size = (unsigned)dir[2];
+          
+          //extract the filename 
+          char *file = (char*)dir[1];  
+          if(file==NULL||*file==NULL)
+            thread_exit();
+          
+          //extract file size
+          unsigned initial_size = (unsigned)dir[2];  
           printf("File: %s\nSize: %d\n",file,initial_size);
-          return filesys_create(file,initial_size);   
+          
+          //eax will have the return value 
+          f->eax = filesys_create(file,initial_size);    
         }
         
         case SYS_REMOVE:
@@ -88,25 +107,47 @@ syscall_handler (struct intr_frame *f UNUSED)
              *  removing an open file does not close it. See Removing an Open File, for details. 
              */
          uint32_t* dir= (uint32_t*)sp;
+         
+         //extract the filename 
          char *file = (char*)dir[1];
-         printf("File: %s\n",file);
-         if(filesys_remove(file))
+         if(file==NULL||*file==NULL)
+            thread_exit();
+         
+         if(f->eax = filesys_remove(file))
                 printf("File %s removed correctly.",file);
          else
                 printf("File %s was not removed.\n",file);
         }
         
+        /*int(fd) open (const char *file) */
         case SYS_OPEN: 
         { 
-            /*int open (const char *file) */
-          struct file *file = filesys_open ((char *) *(sp + 1));
+         uint32_t* dir= (uint32_t*)sp;
+         
+         //extract the filename 
+         char *file_name = (char*)dir[1];
+         if(file_name==NULL||*file_name==NULL)
+            thread_exit();
+         
+          struct file *file = filesys_open (file_name);
           if(file != NULL)
           {
-            //do what needs to be done...
+              int fd = thread_current()->next_fd;
+              thread_current()->next_fd = thread_current()->next_fd + 1;
+              
+              //Create new FD struct
+              struct file_descriptor *new_file_descriptor;
+              new_file_descriptor->fd = fd;
+              new_file_descriptor->file = file;
+              
+              //Add struct to FD list of current process
+              list_push_front (&thread_current()->new_file_des_list, &new_file_descriptor->elem);
+              
+              
+              f->eax = fd;
           }
           else
             f->eax = -1;
-          break;
         }
         
         case SYS_FILESIZE: 
@@ -114,7 +155,14 @@ syscall_handler (struct intr_frame *f UNUSED)
             /* int filesize (int fd)
              *  Returns the size, in bytes, of the file open as fd. 
              */
-          break;
+          uint32_t* dir= (uint32_t*)sp;
+          
+         //extract the filename 
+         char *file_name = (char*)dir[1];
+         if(file_name==NULL||*file_name==NULL)
+            thread_exit();
+          
+         f->eax = file_length(file_name);
         }
         
         case SYS_READ: 
@@ -127,10 +175,55 @@ syscall_handler (struct intr_frame *f UNUSED)
           break;
         }
         
-        case SYS_WRITE: 
+        /*int write (int fd, const void *buffer, unsigned size) */
+        case SYS_WRITE: //9
         {
-            /*int write (int fd, const void *buffer, unsigned size) */
-          break;
+   
+         int fd=*(sp+1);
+         char *buffer=*(sp+2); 
+         unsigned size=*(sp+3);
+         
+         
+         // getiing the fd of specified file     
+        struct list_elem *e;
+        struct file_descriptor *file;
+        for (e = list_begin (&thread_current()->new_file_des_list); e != list_end (&thread_current()->new_file_des_list);
+                            e = list_next (e))
+         {
+                   file = list_entry (e, struct file_descriptor, elem);
+
+        }
+         
+        if(file == NULL)
+        {
+            f->eax=-1;
+        }
+        else
+        {
+           if(file->fd == 1)
+           {
+              if(buffer>=PHYS_BASE)thread_exit();;
+              if(fd<0||fd>=128){thread_exit();}
+              if(fd==0){thread_exit();} // writing to STDIN
+              if(fd==1)     //writing to STDOUT
+              {
+                int a=(int)size;
+                while(a>=100)
+                {
+                  putbuf(buffer,100);
+                  buffer=buffer+100;
+                  a-=100;
+                }
+                putbuf(buffer,a);
+                f->eax=(int)size;
+              }
+           }
+             else
+             {
+                f->eax=file_write(file->file,buffer,(off_t)size);
+             }
+        }
+               
         }
         
         case SYS_SEEK: 
@@ -153,7 +246,22 @@ syscall_handler (struct intr_frame *f UNUSED)
             /*void close (int fd)
              * Closes file descriptor fd. Exiting or terminating a process implicitly closes 
              * all its open file descriptors, as if by calling this function for each one. */
-          break;
+                   
+             int fd=*(sp+1);      
+
+             struct list_elem *e;
+
+             for (e = list_begin (&thread_current()->new_file_des_list); e != list_end (&thread_current()->new_file_des_list);
+                            e = list_next (e))
+             {
+                  struct file_descriptor *f = list_entry (e, struct file_descriptor, elem);
+                  if(f->fd == fd)
+                  {
+                     list_remove (&f->elem);
+                     file_close (&f->file);
+                     break;
+                  }
+             }
         }
     }
 }
