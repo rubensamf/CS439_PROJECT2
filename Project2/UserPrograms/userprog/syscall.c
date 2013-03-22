@@ -20,31 +20,64 @@ syscall_init (void)
 }
 
 static void
-syscall_handler (struct intr_frame *f UNUSED) 
+syscall_handler (struct intr_frame *frame UNUSED) 
 {
+    //Check Valid esp pointer
+    int *sp;
+    struct thread *currentThread = thread_current();
+    
+    if(frame->esp != NULL && is_user_vaddr(frame->esp))
+    {
+        uint32_t *pd = currentThread->pagedir;  
+        if(pagedir_get_page(pd, frame->esp) == NULL)
+        {
+            currentThread->exit_status = -1;
+            thread_exit();
+        }
+        else
+            sp = frame->esp;
+    }
+    else
+    {
+        currentThread->exit_status = -1;
+        thread_exit();
+    }
 
-    int *sp = f->esp;
-
-    printf ("*sp=%d\n",*sp);
+    
     switch(*sp)
-    {       
+    {     
+        /*void halt (void) 
+         * Terminates Pintos by calling shutdown_power_off() (declared in "devices/shutdown.h"). 
+         * This should be seldom used, because you lose some information about possible deadlock situations, etc. 
+         */
         case SYS_HALT:
         {  
-            /*void halt (void) 
-             * Terminates Pintos by calling shutdown_power_off() (declared in "devices/shutdown.h"). 
-             * This should be seldom used, because you lose some information about possible deadlock situations, etc. */
-          shutdown_power_off();
+            shutdown_power_off();
         }
         
+        
+        /* void exit (int status)
+         *  Terminates the current user program, returning status to the kernel. 
+         *  If the process's parent waits for it (see below), this is the status that will be returned. 
+         *  Conventionally, a status of 0 indicates success and nonzero values indicate errors. 
+         */
         case SYS_EXIT:
         {
-            /* void exit (int status)
-             *  Terminates the current user program, returning status to the kernel. 
-             *  If the process's parent waits for it (see below), this is the status that will be returned. 
-             *  Conventionally, a status of 0 indicates success and nonzero values indicate errors. 
-             */
-          thread_current()->status = *(sp+1);
-          printf ("%s: exit(%d)\n", thread_name(), thread_current()->status);
+                       
+         //printf ("%s: exit_status(%d)\n", thread_name(), *(sp+1));
+         struct thread *currentThread = thread_current();
+         int my_status = *(sp+1);
+         
+         if(my_status >= INT32_MAX || my_status <= INT32_MIN )
+         {
+                currentThread->exit_status = -1;
+                thread_exit(); 
+         }
+            
+            
+          //currentThread->status = my_status;
+          currentThread->exit_status = my_status;
+          //printf ("%s: exit(%d)\n", thread_name(), thread_current()->status);        
           thread_exit();
         }
         
@@ -61,42 +94,66 @@ syscall_handler (struct intr_frame *f UNUSED)
           
           //extract the filename 
           char *file = (char*)dir[1];  
-          if(file==NULL||*file==NULL)
+          if(file == NULL || *file == NULL)
             thread_exit();  
             
-          printf("SYS_EXEC = %s",file);  
-          f->eax = process_execute(file);
+          printf("(%s) begin",file);  
+          frame->eax = process_execute(file);
         }
         
         case SYS_WAIT:
         {
             /* int wait (pid_t pid) */
-          f->eax = process_wait (thread_current()->tid);
+          frame->eax = process_wait (thread_current()->tid);
           break;
         }
         
-        case SYS_CREATE:
-        { 
-            /* bool create (const char *file, unsigned initial_size)
+        /* bool create (const char *file, unsigned initial_size)
              *  Creates a new file called file initially initial_size bytes in size. 
              *  Returns true if successful, false otherwise. 
              *  Creating a new file does not open it: opening the new file is a separate 
              *  operation which would require a open system call. 
-             */
-         
+        */
+        case SYS_CREATE:
+        { 
           uint32_t* dir= (uint32_t*)sp;
           
           //extract the filename 
           char *file = (char*)dir[1];  
-          if(file==NULL||*file==NULL)
-            thread_exit();
           
-          //extract file size
-          unsigned initial_size = (unsigned)dir[2];  
-          printf("File: %s\nSize: %d\n",file,initial_size);
-          
-          //eax will have the return value 
-          f->eax = filesys_create(file,initial_size);    
+          if(file != NULL && is_user_vaddr(file))
+          {
+                struct thread *currentThread = thread_current();
+                uint32_t *pd = currentThread->pagedir;  
+                if(pagedir_get_page(pd, file) == NULL)
+                {
+                    currentThread->exit_status = -1;
+                    thread_exit();
+                }
+                else
+                {
+                    if(file==NULL|| *file==NULL || file=="")
+                      {
+                        thread_current()->exit_status = -1;
+                        thread_exit();
+                      }
+
+                      //extract file size
+                      unsigned initial_size = (unsigned)dir[2];  
+                      //printf("File: %s\nSize: %d\n",file,initial_size);
+
+                      frame->eax = filesys_create(file,initial_size);   
+
+                      //printf("SYS_CREATE return value=%d",frame->eax);
+                }
+            }
+            else
+          {
+                currentThread->exit_status = -1;
+                thread_exit();
+          }
+
+
         }
         
         case SYS_REMOVE:
@@ -113,21 +170,41 @@ syscall_handler (struct intr_frame *f UNUSED)
          if(file==NULL||*file==NULL)
             thread_exit();
          
-         if(f->eax = filesys_remove(file))
-                printf("File %s removed correctly.",file);
+         frame->eax = filesys_remove(file);
+         /*if(frame->eax = filesys_remove(file))
+             printf("File %s removed correctly.",file);
          else
-                printf("File %s was not removed.\n",file);
+             printf("File %s was not removed.\n",file);*/
         }
+        
+        
         
         /*int(fd) open (const char *file) */
         case SYS_OPEN: 
         { 
+         if(!is_user_vaddr((char *) *(sp + 1)))
+         {
+             thread_current()->exit_status = -1;
+             thread_exit();
+         }   
+            
          uint32_t* dir= (uint32_t*)sp;
          
          //extract the filename 
          char *file_name = (char*)dir[1];
          if(file_name==NULL||*file_name==NULL)
+         {
+             thread_current()->exit_status = -1;
             thread_exit();
+         }
+         
+         struct thread *currentThread = thread_current();
+         uint32_t *pd = currentThread->pagedir; 
+         if(pagedir_get_page(pd, (char *) *(sp + 1)) == NULL)
+          {
+             thread_current()->exit_status = -1;
+             thread_exit();
+          }
          
           struct file *file = filesys_open (file_name);
           if(file != NULL)
@@ -144,65 +221,135 @@ syscall_handler (struct intr_frame *f UNUSED)
               list_push_front (&thread_current()->new_file_des_list, &new_file_descriptor->elem);
               
               
-              f->eax = fd;
+              frame->eax = fd;
+              printf("OPEN fd value=%d",fd);
           }
           else
-            f->eax = -1;
+            frame->eax = -1;
         }
         
+        /* int filesize (int fd)
+         *  Returns the size, in bytes, of the file open as fd. 
+         */
         case SYS_FILESIZE: 
         {  
-            /* int filesize (int fd)
-             *  Returns the size, in bytes, of the file open as fd. 
-             */
-          uint32_t* dir= (uint32_t*)sp;
-          
-         //extract the filename 
-         char *file_name = (char*)dir[1];
-         if(file_name==NULL||*file_name==NULL)
-            thread_exit();
-          
-         f->eax = file_length(file_name);
+         int fd=*(sp+1);
+
+         printf("fd value=%d",fd);
+         struct list_elem *e;
+         struct file_descriptor *file_descriptor;
+         for (e = list_begin (&thread_current()->new_file_des_list); e != list_end (&thread_current()->new_file_des_list);
+                                e = list_next (e))
+         {
+                file_descriptor = list_entry (e, struct file_descriptor, elem);
+                if(file_descriptor->fd == fd)
+                {
+                   break;
+                }    
+         }
+                 
+         frame->eax = file_length(file_descriptor->file);
         }
+        
+        
         
         case SYS_READ: 
         {
-            /*int read (int fd, void *buffer, unsigned size)
-             * Reads size bytes from the file open as fd into buffer. 
-             * Returns the number of bytes actually read (0 at end of file), or -1 if 
-             * the file could not be read (due to a condition other than end of file). 
-             * Fd 0 reads from the keyboard using input_getc(). */
-          break;
+            int fd=*(sp+1);
+            char *buffer=*(sp+2); 
+            unsigned size=*(sp+3);
+            struct thread *currentThread = thread_current();
+            uint32_t *pd = currentThread->pagedir;  
+         
+            //Accessing User Memory
+             if(!is_user_vaddr (buffer))
+             {
+                thread_exit();
+             }
+             if(pagedir_get_page(pd, buffer) == NULL)
+             {
+               thread_exit();
+             }
+         
+         
+            // getiing the fd of specified file     
+            struct list_elem *e;
+            struct file_descriptor *file_descriptor;
+            for (e = list_begin (&thread_current()->new_file_des_list); e != list_end (&thread_current()->new_file_des_list);
+                                e = list_next (e))
+             {
+                       file_descriptor = list_entry (e, struct file_descriptor, elem);
+                        if(file_descriptor->fd == fd)
+                        {
+                           break;
+                           
+                        }    
+             }
+         
+            
+            if(file_descriptor == NULL)
+            {
+                frame->eax=-1;
+            }
+            else
+            {
+               if(file_descriptor->fd == 1)
+               {
+                  if(buffer>=PHYS_BASE)thread_exit();
+                  if(fd<0||fd>=128){thread_exit();}
+                  if(fd==1){thread_exit();} // reading from STDIN
+                  
+               }
+               else
+               {
+                  frame->eax=file_read(file_descriptor->file,buffer,(off_t)size);
+               }
+            }
         }
         
         /*int write (int fd, const void *buffer, unsigned size) */
         case SYS_WRITE: //9
         {
    
-         int fd=*(sp+1);
+         /*int fd=*(sp+1);
          char *buffer=*(sp+2); 
          unsigned size=*(sp+3);
+         struct thread *currentThread = thread_current();
+         uint32_t *pd = currentThread->pagedir;  
+         
+         if(!is_user_vaddr (buffer))
+         {
+           thread_exit();
+         }
+         if(pagedir_get_page(pd, buffer) == NULL)
+         {
+           thread_exit();
+         }
          
          
-         // getiing the fd of specified file     
+        // getiing the fd of specified file     
         struct list_elem *e;
-        struct file_descriptor *file;
+        struct file_descriptor *file_descriptor;
         for (e = list_begin (&thread_current()->new_file_des_list); e != list_end (&thread_current()->new_file_des_list);
                             e = list_next (e))
          {
-                   file = list_entry (e, struct file_descriptor, elem);
-
-        }
-         
-        if(file == NULL)
+              file_descriptor = list_entry (e, struct file_descriptor, elem);
+              if(file_descriptor->fd == fd)
+              {
+                     break;
+              }    
+         }
+        
+        //printf("fd=%d\n",file_descriptor->fd);
+        if(file_descriptor->file == NULL)
         {
-            f->eax=-1;
+            frame->eax=-1;
         }
         else
         {
-           if(file->fd == 1)
+           if(file_descriptor->fd == 1)
            {
-              if(buffer>=PHYS_BASE)thread_exit();;
+              if(buffer>=PHYS_BASE)thread_exit();
               if(fd<0||fd>=128){thread_exit();}
               if(fd==0){thread_exit();} // writing to STDIN
               if(fd==1)     //writing to STDOUT
@@ -215,22 +362,37 @@ syscall_handler (struct intr_frame *f UNUSED)
                   a-=100;
                 }
                 putbuf(buffer,a);
-                f->eax=(int)size;
+                frame->eax=(int)size;
               }
            }
              else
              {
-                f->eax=file_write(file->file,buffer,(off_t)size);
+                frame->eax=file_write(file_descriptor->file,buffer,(off_t)size);
              }
-        }
-               
+        }*/
+        break;       
         }
         
+        /*void seek (int fd, unsigned position) */
         case SYS_SEEK: 
         {
-            /*void seek (int fd, unsigned position) */
-          break;
+          int fd=*(sp+1);
+          unsigned offBy = *(sp+2);
+          struct list_elem *e;
+          for (e = list_begin (&thread_current()->new_file_des_list);
+                e != list_end (&thread_current()->new_file_des_list);
+                            e = list_next (e))
+             {
+                  struct file_descriptor *f = list_entry (e, struct
+                  file_descriptor, elem);
+                  if(f->fd == fd)
+                  {
+                     file_seek(&f->file, offBy);
+                     break;
+                  }
+             }
         }
+        
         
         case SYS_TELL: //unsigned
         { 
@@ -238,8 +400,21 @@ syscall_handler (struct intr_frame *f UNUSED)
              * Returns the position of the next byte to be read or written in open file fd, 
              * expressed in bytes from the beginning of the file. 
              */
-          break;
+          int fd=*(sp+1);
+          struct list_elem *e;
+          for (e = list_begin (&thread_current()->new_file_des_list);
+                        e != list_end (&thread_current()->new_file_des_list);
+                            e = list_next (e))
+             {
+                  struct file_descriptor *fx = list_entry (e, struct file_descriptor, elem);
+                  if(fx->fd == fd)
+                  {
+                     frame->eax = file_tell(&fx->file);
+                     break;
+                  }
+             }
         }
+        
         
         case SYS_CLOSE: //void
         {
@@ -264,4 +439,6 @@ syscall_handler (struct intr_frame *f UNUSED)
              }
         }
     }
+    
+
 }
