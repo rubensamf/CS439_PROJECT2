@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -100,9 +101,22 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+    
+    /*Wait Function Project 3 Add-ons*/
+    bool is_waiting;
+    bool is_active;
+    int exit_status;
+    
+    struct semaphore wait;
+    struct list children;
+    struct list_elem child;
+    
+    void * parent;
 #endif
 
-    /* Owned by thread.c. */
+    /* Owned by thread.c. 
+       Warning: Do not add any fields after this 'magic' constant
+     */
     unsigned magic;                     /* Detects stack overflow. */
   };
   
