@@ -18,11 +18,12 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
-/* OUR CODE *
-* Required variables and structures for setting up stack */
+/* OUR CODE STARTS HERE */
+/* Required variables and structures for setting up stack */
 static char *my_file_name;
 static char** argv;
 /* END OF OUR CODE */
+
 struct my_element
 {
     struct list_elem elem;
@@ -52,8 +53,20 @@ Otherwise there's a race between the caller and load(). */
     return TID_ERROR;
   strlcpy (my_file_name, file_name, PGSIZE);
   
- /* OUR CODE */
- /* Strip all argumets*/
+  
+  /* OUR CODE STARTS HERE */
+  
+  /* Insure that the length of all the command line arguments taken together 
+   * will fit within a single page */
+  size_t my_file_name_size = sizeof(my_file_name);
+  //ASSERT (my_file_name_size <= PGSIZE);
+  /* Otherwise, exit the current thread */
+  if (my_file_name_size <= PGSIZE)
+  {
+      thread_current()->status = -1;
+      thread_exit();
+  }
+  /* Strip all argumets*/
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
     return TID_ERROR;
@@ -66,8 +79,8 @@ Otherwise there's a race between the caller and load(). */
   /* Create a new thread to execute FILE_NAME. */
   /* WE MODIFIED THE NEXT LINE BY REPLACING FILENAME WITH TOKEN */
   tid = thread_create (token, PRI_DEFAULT, start_process, token);
-  /* END OF OUR CODE */
   
+  /* END OF OUR CODE */
   
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy);
@@ -500,11 +513,11 @@ setup_stack (void **esp)
               memcpy (*esp, token, sizeof(char) * (strlen(token) + 1));              
               argc += 1;
               word_align_size += strlen(token) + 1;              
-          }          
+        }          
 /* (ii) Push word_align onto stack */       
-          *esp -= (4 - (word_align_size % 4)) % 4;          
+        *esp -= (4 - (word_align_size % 4)) % 4;          
 /* (iii)Push zero (the terminating character) onto stack */
-          *esp -= 4;                  
+        *esp -= 4;                  
 /* (iv) Push the token addresses onto the stack */
         int i;
         for(i = argc - 1; i >= 0; i--)
