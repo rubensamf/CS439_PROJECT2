@@ -119,20 +119,20 @@ syscall_handler (struct intr_frame *frame UNUSED)
           uint32_t* dir= (uint32_t*)sp;
           
           //extract the filename 
-          char *file = (char*)dir[1];  
+          char *file_name = (char*)dir[1];  
           
-          if(file != NULL && is_user_vaddr(file))
+          if(file_name != NULL && is_user_vaddr(file_name))
           {
                 struct thread *currentThread = thread_current();
                 uint32_t *pd = currentThread->pagedir;  
-                if(pagedir_get_page(pd, file) == NULL)
+                if(pagedir_get_page(pd, file_name) == NULL)
                 {
                     currentThread->exit_status = -1;
                     thread_exit();
                 }
                 else
                 {
-                    if(file==NULL|| *file==NULL || file=="")
+                    if(file_name==NULL|| *file_name==NULL || file_name=="")
                       {
                         thread_current()->exit_status = -1;
                         thread_exit();
@@ -142,7 +142,9 @@ syscall_handler (struct intr_frame *frame UNUSED)
                       unsigned initial_size = (unsigned)dir[2];  
                       //printf("File: %s\nSize: %d\n",file,initial_size);
 
-                      frame->eax = filesys_create(file,initial_size);   
+
+                      printf("(%s) create %s\n",thread_current()->name,file_name);
+                      frame->eax = filesys_create(file_name,initial_size);   
 
                       //printf("SYS_CREATE return value=%d",frame->eax);
                 }
@@ -181,51 +183,59 @@ syscall_handler (struct intr_frame *frame UNUSED)
         
         /*int(fd) open (const char *file) */
         case SYS_OPEN: 
-        { 
-         if(!is_user_vaddr((char *) *(sp + 1)))
-         {
-             thread_current()->exit_status = -1;
-             thread_exit();
-         }   
-            
+        {          
          uint32_t* dir= (uint32_t*)sp;
          
          //extract the filename 
          char *file_name = (char*)dir[1];
-         if(file_name==NULL||*file_name==NULL)
-         {
-             thread_current()->exit_status = -1;
-            thread_exit();
-         }
-         
-         struct thread *currentThread = thread_current();
-         uint32_t *pd = currentThread->pagedir; 
-         if(pagedir_get_page(pd, (char *) *(sp + 1)) == NULL)
+         if(file_name != NULL && is_user_vaddr(file_name))
           {
-             thread_current()->exit_status = -1;
-             thread_exit();
+                struct thread *currentThread = thread_current();
+                uint32_t *pd = currentThread->pagedir;  
+                if(pagedir_get_page(pd, file_name) == NULL)
+                {
+                    currentThread->exit_status = -1;
+                    thread_exit();
+                }
+                else
+                {
+		    
+                    if(file_name==NULL|| *file_name==NULL || file_name=="")
+                      {
+                        thread_current()->exit_status = -1;
+                        thread_exit();
+                      }
+
+	              //DO WORK
+                      struct file *file = filesys_open (file_name);
+                      if(file != NULL)
+                      {
+                          int fd = thread_current()->next_fd;
+                          thread_current()->next_fd = thread_current()->next_fd + 1;
+
+                          //Create new FD struct
+                          struct file_descriptor *new_file_descriptor;
+                          new_file_descriptor->fd = fd;
+                          new_file_descriptor->file = file;
+
+                          //Add struct to FD list of current process
+                          list_push_front (&thread_current()->new_file_des_list, &new_file_descriptor->elem);
+
+
+                          frame->eax = fd;
+                          printf("OPEN fd value=%d",fd);
+                      }
+                      else
+                        frame->eax = -1;
+                }
+            }
+            else
+          {
+                currentThread->exit_status = -1;
+                thread_exit();
           }
          
-          struct file *file = filesys_open (file_name);
-          if(file != NULL)
-          {
-              int fd = thread_current()->next_fd;
-              thread_current()->next_fd = thread_current()->next_fd + 1;
-              
-              //Create new FD struct
-              struct file_descriptor *new_file_descriptor;
-              new_file_descriptor->fd = fd;
-              new_file_descriptor->file = file;
-              
-              //Add struct to FD list of current process
-              list_push_front (&thread_current()->new_file_des_list, &new_file_descriptor->elem);
-              
-              
-              frame->eax = fd;
-              printf("OPEN fd value=%d",fd);
-          }
-          else
-            frame->eax = -1;
+
         }
         
         /* int filesize (int fd)
@@ -234,24 +244,32 @@ syscall_handler (struct intr_frame *frame UNUSED)
         case SYS_FILESIZE: 
         {  
          int fd=*(sp+1);
-
-         printf("fd value=%d",fd);
-         struct list_elem *e;
-         struct file_descriptor *file_descriptor;
-         for (e = list_begin (&thread_current()->new_file_des_list); e != list_end (&thread_current()->new_file_des_list);
-                                e = list_next (e))
+         
+         if(fd >= 0 || fd <= 128)
          {
-                file_descriptor = list_entry (e, struct file_descriptor, elem);
-                if(file_descriptor->fd == fd)
-                {
-                   break;
-                }    
+             struct list_elem *e;
+             struct file_descriptor *file_descriptor = NULL;
+             for (e = list_begin (&thread_current()->new_file_des_list); e != list_end (&thread_current()->new_file_des_list);
+                                    e = list_next (e))
+             {
+                    file_descriptor = list_entry (e, struct file_descriptor, elem);
+                    if(file_descriptor->fd == fd)
+                    {
+                       frame->eax = file_length(file_descriptor->file);
+                       break;
+                    }
+                    frame->eax = -1;
+             }
+             
          }
-                 
-         frame->eax = file_length(file_descriptor->file);
+         else
+         {
+             currentThread->exit_status = -1;
+             thread_exit();
+         }
         }
         
-        
+
         
         case SYS_READ: 
         {
@@ -264,14 +282,17 @@ syscall_handler (struct intr_frame *frame UNUSED)
             //Accessing User Memory
              if(!is_user_vaddr (buffer))
              {
+                currentThread->exit_status = -1;
                 thread_exit();
              }
              if(pagedir_get_page(pd, buffer) == NULL)
              {
-               thread_exit();
+               currentThread->exit_status = -1;
+               thread_exit();;
              }
          
-         
+            frame->eax=-1;
+            
             // getiing the fd of specified file     
             struct list_elem *e;
             struct file_descriptor *file_descriptor;
@@ -281,30 +302,33 @@ syscall_handler (struct intr_frame *frame UNUSED)
                        file_descriptor = list_entry (e, struct file_descriptor, elem);
                         if(file_descriptor->fd == fd)
                         {
-                           break;
-                           
-                        }    
+                            if(file_descriptor->fd == 1)
+                               {
+                                  if(buffer>=PHYS_BASE)
+                                  {
+                                      currentThread->exit_status = -1;
+                                      thread_exit();
+                                  }
+                                  if(fd<0||fd>=128)
+                                  {
+                                      currentThread->exit_status = -1;
+                                      thread_exit();
+                                  }
+                                  if(fd==1)
+                                  {
+                                      currentThread->exit_status = -1;
+                                      thread_exit();
+                                  } // reading from STDIN
+
+                               }
+                               else
+                                  frame->eax=file_read(file_descriptor->file,buffer,(off_t)size);
+                                  
+                           break;   
+                        }
+                       frame->eax=-1;
              }
          
-            
-            if(file_descriptor == NULL)
-            {
-                frame->eax=-1;
-            }
-            else
-            {
-               if(file_descriptor->fd == 1)
-               {
-                  if(buffer>=PHYS_BASE)thread_exit();
-                  if(fd<0||fd>=128){thread_exit();}
-                  if(fd==1){thread_exit();} // reading from STDIN
-                  
-               }
-               else
-               {
-                  frame->eax=file_read(file_descriptor->file,buffer,(off_t)size);
-               }
-            }
         }
         
         /*int write (int fd, const void *buffer, unsigned size) */

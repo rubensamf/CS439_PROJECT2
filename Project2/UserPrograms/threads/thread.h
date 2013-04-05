@@ -106,10 +106,8 @@ struct thread
     bool is_waiting;
     bool is_active;
     int exit_status;
-    
-    struct semaphore wait;
-    struct list children;
-    struct list_elem child;
+
+        
     
     void * parent;
 #endif
